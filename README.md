@@ -1,1 +1,1 @@
-This repository contains figures and the corresponding R code to reproduce them. Figures are available under CC4.0 license [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/) and thus re-usable. 
+This repository contains figures and the corresponding R code to reproduce them. Figures are available under [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/) and thus re-usable. 
