@@ -1,0 +1,158 @@
+---
+title: "Figure: CV methods and their NNDs"
+author: "Jan Linnenbrink"
+date: last-modified
+date-format: "[Last Updated:] MMMM, YYYY"
+format:
+  html:
+    code-fold: true
+    code-summary: "Show the code"
+    # page-layout: article
+    fig-column: page
+    fig-width: 10
+    fig-height: 4
+    embed-resources: true
+knitr:
+  opts_chunk:
+    warnings: false
+execute:
+  warning: false
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r}
+library(terra)
+library(sf)
+library(CAST)
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+library(patchwork)
+library(simsam)
+
+get_legend_35 <- function(plot) {
+	# return all legend candidates
+	legends <- get_plot_component(plot, "guide-box", return_all = TRUE)
+	# find non-zero legends
+	nonzero <- vapply(legends, \(x) !inherits(x, "zeroGrob"), TRUE)
+	idx <- which(nonzero)
+	# return first non-zero legend if exists, and otherwise first element (which will be a zeroGrob)
+	if (length(idx) > 0) {
+		return(legends[[idx[1]]])
+	} else {
+		return(legends[[1]])
+	}
+}
+
+theme_set(theme_bw(base_size = 15))
+```
+
+## Geodist
+
+```{r}
+#| fig-height: 6
+
+rast_grid = terra::rast(xmin = 0, xmax = 200, ymin = 0, ymax = 200, ncols = 200, nrows = 200)
+
+study_area <- st_bbox(rast_grid)
+
+ppoints <- spatSample(rast_grid, 1000, "regular", as.points = TRUE) |>
+	st_as_sf()
+
+sample_r = sam_field(rast_grid, 100, "random") |> mutate("type" = "random")
+sample_c = sam_field(rast_grid, 100, "clustered", nclusters = 5, value = 10) |> mutate("type" = "clustered")
+
+
+samples = rbind(sample_r, sample_c) |>
+	mutate("type" = factor(type, levels = c("random", "clustered")))
+
+set.seed(1)
+samples$random_cv <- unlist(tapply(samples, samples$type, function(x) sample(1:10, nrow(x), replace = TRUE)))
+
+cv_distances <- tapply(samples, samples$type, function(x) {
+	cvfolds <- x$random_cv
+
+	tmp <- list()
+	for (i in unique(cvfolds)) {
+		tmp[[i]] <- which(cvfolds == i)
+	}
+	cvfolds <- tmp
+
+	d_cv <- c()
+	for (i in 1:length(cvfolds)) {
+		d_cv_tmp <- sf::st_distance(samples[cvfolds[[i]], ], samples[-cvfolds[[i]], ])
+		d_cv <- c(d_cv, apply(d_cv_tmp, 1, min))
+	}
+
+	dists_cv <- data.frame(dist = d_cv, what = "CV distances", design = unique(x$type))
+}) |>
+	do.call(what = "rbind")
+
+# Other distances
+sampletosample <- tapply(samples, samples$type, function(x) {
+	d <- sf::st_distance(x)
+	diag(d) <- Inf
+	min_d <- apply(d, 1, min)
+	data.frame(dist = min_d, what = factor("sample-to-sample"), design = unique(x$type))
+}) |>
+	do.call(what = "rbind")
+
+# sample to prediction distance
+sampletoprediction <- tapply(samples, samples$type, function(x) {
+	d0 <- sf::st_distance(ppoints, x)
+	min_d0 <- apply(d0, 1, min)
+	data.frame(dist = min_d0, what = factor("prediction-to-sample"), design = unique(x$type))
+}) |>
+	do.call(what = "rbind")
+
+geodistances <- rbind(sampletosample, sampletoprediction, cv_distances)
+rownames(geodistances) <- NULL
+geodistances <- mutate(
+	geodistances,
+	"CV" = ifelse(grepl("CV", what), TRUE, FALSE),
+	"design" = factor(design, levels = c("random", "clustered"))
+)
+
+geod_design_CV <- geodistances |> filter(CV == TRUE)
+geod_design_sd <- geodistances |> filter(CV == FALSE)
+
+
+geodist_plot <- ggplot(geodistances, aes(colour = what, fill = what)) +
+	geom_density(data = geodistances, aes(x = dist, fill = what), alpha = 0.5, linewidth = 0.1) +
+	stat_density(data = geodistances, aes(x = dist, colour = what), geom = "line", position = "identity") +
+	scale_colour_manual("distance function", values = c("grey60", "grey80", "blue4")) +
+	scale_fill_manual("distance function", values = c("grey60", "grey80", "transparent")) +
+	scale_x_log10("distance (m)") +
+	xlab("distance (km)") +
+	facet_wrap(~design, strip.position = "right", ncol = 1) +
+	theme(
+		legend.position = "bottom",
+		legend.box = "vertical",
+		legend.spacing.y = unit(2, "mm"),
+		legend.title = element_text(size = 15, hjust = 0.5),
+		legend.text = element_text(size = 13.5),
+		legend.title.position = "top",
+		strip.text = element_text(size = 15),
+		panel.grid = element_blank()
+	)
+
+legend <- get_legend_35(geodist_plot)
+geodist_plot <- geodist_plot +
+	theme(legend.position = "None")
+
+maps <- ggplot(samples) +
+	geom_sf(data = st_as_sfc(study_area), colour = "black", fill = "transparent") +
+	geom_sf() +
+	facet_wrap(~type, ncol = 1) +
+	theme(panel.grid = element_blank(), strip.text = element_blank())
+
+maps_geodist <- maps + geodist_plot
+combined_plot_legend <- plot_grid(maps_geodist, legend, ncol = 1, rel_heights = c(1, 0.2))
+
+combined_plot_legend
+ggsave("figures/geodist_sim.pdf", combined_plot_legend, width = 8, height = 6)
+
+```
+
