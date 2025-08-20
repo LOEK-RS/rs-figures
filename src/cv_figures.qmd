@@ -54,6 +54,7 @@ theme_set(theme_bw(base_size = 15))
 ```{r}
 #| fig-height: 6
 
+k = 10
 rast_grid = terra::rast(xmin = 0, xmax = 200, ymin = 0, ymax = 200, ncols = 200, nrows = 200)
 
 study_area <- st_bbox(rast_grid)
@@ -61,49 +62,51 @@ study_area <- st_bbox(rast_grid)
 ppoints <- spatSample(rast_grid, 1000, "regular", as.points = TRUE) |>
 	st_as_sf()
 
-sample_r = sam_field(rast_grid, 100, "random") |> mutate("type" = "random")
-sample_c = sam_field(rast_grid, 100, "clustered", nclusters = 5, value = 10) |> mutate("type" = "clustered")
+set.seed(100)
+sample_r <- sam_field(rast_grid, 100, "random") |>
+	mutate(type = "random", cv_folds = caret::createFolds(type, k = k, list = FALSE, returnTrain = FALSE))
+sample_c <- sam_field(rast_grid, 100, "clustered", nclusters = 5, value = 20) |>
+	mutate(type = "clustered", cv_folds = caret::createFolds(type, k = k, list = FALSE, returnTrain = FALSE))
 
+samples <- list("random" = sample_r, "clustered" = sample_c)
 
-samples = rbind(sample_r, sample_c) |>
-	mutate("type" = factor(type, levels = c("random", "clustered")))
-
-set.seed(1)
-samples$random_cv <- unlist(tapply(samples, samples$type, function(x) sample(1:10, nrow(x), replace = TRUE)))
-
-cv_distances <- tapply(samples, samples$type, function(x) {
-	cvfolds <- x$random_cv
+cv_distances <- lapply(names(samples), function(t) {
+	s <- samples[[t]]
+	cvfolds <- s$cv_folds
 
 	tmp <- list()
 	for (i in unique(cvfolds)) {
 		tmp[[i]] <- which(cvfolds == i)
 	}
+
 	cvfolds <- tmp
 
 	d_cv <- c()
 	for (i in 1:length(cvfolds)) {
-		d_cv_tmp <- sf::st_distance(samples[cvfolds[[i]], ], samples[-cvfolds[[i]], ])
+		d_cv_tmp <- sf::st_distance(s[cvfolds[[i]], ], s[-cvfolds[[i]], ])
 		d_cv <- c(d_cv, apply(d_cv_tmp, 1, min))
 	}
 
-	dists_cv <- data.frame(dist = d_cv, what = "CV distances", design = unique(x$type))
+	dists_cv <- data.frame(dist = d_cv, what = "CV-distances", design = unique(s$type))
 }) |>
 	do.call(what = "rbind")
 
 # Other distances
-sampletosample <- tapply(samples, samples$type, function(x) {
-	d <- sf::st_distance(x)
+sampletosample <- lapply(names(samples), function(t) {
+	s <- samples[[t]]
+	d <- sf::st_distance(s)
 	diag(d) <- Inf
 	min_d <- apply(d, 1, min)
-	data.frame(dist = min_d, what = factor("sample-to-sample"), design = unique(x$type))
+	data.frame(dist = min_d, what = factor("sample-to-sample"), design = unique(s$type))
 }) |>
 	do.call(what = "rbind")
 
 # sample to prediction distance
-sampletoprediction <- tapply(samples, samples$type, function(x) {
-	d0 <- sf::st_distance(ppoints, x)
+sampletoprediction <- lapply(names(samples), function(t) {
+	s <- samples[[t]]
+	d0 <- sf::st_distance(ppoints, s)
 	min_d0 <- apply(d0, 1, min)
-	data.frame(dist = min_d0, what = factor("prediction-to-sample"), design = unique(x$type))
+	data.frame(dist = min_d0, what = factor("prediction-to-sample"), design = unique(s$type))
 }) |>
 	do.call(what = "rbind")
 
@@ -115,18 +118,18 @@ geodistances <- mutate(
 	"design" = factor(design, levels = c("random", "clustered"))
 )
 
-geod_design_CV <- geodistances |> filter(CV == TRUE)
-geod_design_sd <- geodistances |> filter(CV == FALSE)
-
-
-geodist_plot <- ggplot(geodistances, aes(colour = what, fill = what)) +
-	geom_density(data = geodistances, aes(x = dist, fill = what), alpha = 0.5, linewidth = 0.1) +
-	stat_density(data = geodistances, aes(x = dist, colour = what), geom = "line", position = "identity") +
-	scale_colour_manual("distance function", values = c("grey60", "grey80", "blue4")) +
-	scale_fill_manual("distance function", values = c("grey60", "grey80", "transparent")) +
-	scale_x_log10("distance (m)") +
-	xlab("distance (km)") +
-	facet_wrap(~design, strip.position = "right", ncol = 1) +
+# from https://github.com/HannaMeyer/CAST/blob/master/R/plot.R#L456
+labs <- c("sample-to-sample", "prediction-to-sample", "CV-distances", "test-to-sample")
+myColors <- RColorBrewer::brewer.pal(4, "Dark2")
+names(myColors) <- labs
+xlabs <- "geographic distances (m)"
+geodist_plot <- ggplot(data = geodistances, aes(x = dist, group = what, fill = what)) +
+	geom_density(adjust = 1.5, alpha = .5, stat = "density", lwd = 0.3) +
+	scale_fill_manual(name = "distance function", values = myColors) +
+	theme_bw() +
+	xlab(xlabs) +
+	scale_x_log10() +
+	facet_wrap(~design, ncol = 1, strip.position = "right") +
 	theme(
 		legend.position = "bottom",
 		legend.box = "vertical",
@@ -142,13 +145,16 @@ legend <- get_legend_35(geodist_plot)
 geodist_plot <- geodist_plot +
 	theme(legend.position = "None")
 
-maps <- ggplot(samples) +
+samples_df <- do.call("rbind", samples) |>
+	mutate(type = factor(type, levels = names(samples)))
+
+maps <- ggplot(samples_df) +
 	geom_sf(data = st_as_sfc(study_area), colour = "black", fill = "transparent") +
 	geom_sf() +
 	facet_wrap(~type, ncol = 1) +
 	theme(panel.grid = element_blank(), strip.text = element_blank())
 
-maps_geodist <- maps + geodist_plot
+maps_geodist <- maps + geodist_plot + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 16))
 combined_plot_legend <- plot_grid(maps_geodist, legend, ncol = 1, rel_heights = c(1, 0.2))
 
 combined_plot_legend
