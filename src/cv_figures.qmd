@@ -151,7 +151,7 @@ samples_df <- do.call("rbind", samples) |>
 	mutate(type = factor(type, levels = names(samples)))
 
 maps <- ggplot(samples_df) +
-	geom_sf(data = st_as_sfc(study_area), colour = "black", fill = "transparent") +
+	geom_sf(data = st_as_sfc(study_area), colour = "transparent", fill = "transparent") +
 	geom_sf() +
 	facet_wrap(~type, ncol = 1) +
 	theme(panel.grid = element_blank(), strip.text = element_blank())
