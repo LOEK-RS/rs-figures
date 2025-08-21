@@ -1,17 +1,15 @@
-This repository contains figures and the corresponding R code to reproduce them from the Research group of Remote Sensing and Spatial Modelling, Institute of Landscape Ecology, University of Münster.
+This repository contains figures and the corresponding R code to reproduce them from [the Research group of Remote Sensing and Spatial Modelling, Institute of Landscape Ecology, University of Münster](https://www.uni-muenster.de/RemoteSensing/en/).
 
 ## Gallery
 
 ### CV figures (`src/cv_figures.qmd`)
 
 **Comparison of random and clustered sampling designs and their effects on distance distributions and cross-validation.**
-**[Panel a) shows sampling locations for two different designs: random and clustered. Panel b) shows the respective density distributions of nearest-neighbor distances between samples (green), between prediction points and samples (orange) and between cross-validation (CV) folds. For randomly distributed samples, the CV-distances closely resemble the prediction distances. For clustered sampling, however, the CV-distances are much shorter, and thus won't yield reliable estimates of map accuracy.]**
 ![geodist_sim.png](figures/geodist_sim.png)
 
 ## License
 
-All figures are available under the  
-[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/).  
+All figures are available under the [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-green.svg)](https://creativecommons.org/licenses/by/4.0/).  
 
 This means you are free to **share and adapt** them, as long as proper attribution is given.  
 
