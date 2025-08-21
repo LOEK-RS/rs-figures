@@ -127,7 +127,7 @@ names(myColors) <- labs
 xlabs <- "geographic distances (m)"
 geodist_plot <- ggplot(data = geodistances, aes(x = dist, group = what, fill = what)) +
 	geom_density(adjust = 1.5, alpha = .5, stat = "density", lwd = 0.3) +
-	scale_fill_manual(name = "distance function", values = myColors) +
+	scale_fill_manual(name = "Prediction distance:", values = myColors) +
 	theme_bw() +
 	xlab(xlabs) +
 	scale_x_log10() +
