@@ -4,7 +4,9 @@ This repository contains figures and the corresponding R code to reproduce them 
 
 ### CV figures (`src/cv_figures.qmd`)
 
-![geodist_sim.pdf](figures/geodist_sim.pdf)
+**Comparison of random and clustered sampling designs and their effects on distance distributions and cross-validation.**
+**[Panel a) shows sampling locations for two different designs: random and clustered. Panel b) shows the respective density distributions of nearest-neighbor distances between samples (green), between prediction points and samples (orange) and between cross-validation (CV) folds. For randomly distributed samples, the CV-distances closely resemble the prediction distances. For clustered sampling, however, the CV-distances are much shorter, and thus won't yield reliable estimates of map accuracy.]**
+![geodist_sim.png](figures/geodist_sim.png)
 
 ## License
 
@@ -22,12 +24,7 @@ Please check the metadata (author information provided with each figure/script) 
 For example, if you use a specific figure, you can cite it like this:
 
 ```
-Author(s) (YEAR).
-"Figure Title." In: rs-figures: Figures and R Code for Reproducible Research.
-Research Group of Remote Sensing and Spatial Modelling,
-Institute of Landscape Ecology, University of Münster.
-Available at: https://github.com/LOEK-RS/rs-figures
-License: CC BY 4.0
+Author(s) (YEAR). "Figure Title." In: rs-figures: Figures and R Code for Reproducible Research. Research Group of Remote Sensing and Spatial Modelling, Institute of Landscape Ecology, University of Münster. Available at: https://github.com/LOEK-RS/rs-figures. License: CC BY 4.0
 ```
 
 Or you can use the following BibTeX entry as a template:
