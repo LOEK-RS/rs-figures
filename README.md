@@ -1,4 +1,5 @@
-This repository contains figures and the corresponding R code to reproduce them from [the Research group of Remote Sensing and Spatial Modelling, Institute of Landscape Ecology, University of Münster](https://www.uni-muenster.de/RemoteSensing/en/).
+This repository contains figures and the corresponding code to reproduce them. 
+They are made by the members of [the Remote Sensing and Spatial Modelling research group, Institute of Landscape Ecology, University of Münster](https://www.uni-muenster.de/RemoteSensing/en/).
 
 ## Gallery
 
