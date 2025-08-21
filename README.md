@@ -10,8 +10,7 @@ They are made by the members of [the Remote Sensing and Spatial Modelling resear
 
 ## License
 
-All figures are available under the [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-green.svg)](https://creativecommons.org/licenses/by/4.0/).  
-
+All figures are available under the [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-green.svg)](https://creativecommons.org/licenses/by/4.0/).
 This means you are free to **share and adapt** them, as long as proper attribution is given.  
 
 ## Citation
