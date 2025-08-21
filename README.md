@@ -3,7 +3,7 @@ They are made by the members of [the Remote Sensing and Spatial Modelling resear
 
 ## Gallery
 
-### CV figures ([`src/cv_figures.qmd](src/cv_figures.qmd))
+### CV figures ([src/cv_figures.qmd](src/cv_figures.qmd))
 
 **Comparison of random and clustered sampling designs and their effects on distance distributions and cross-validation.**
 ![geodist_sim.png](figures/geodist_sim.png)
