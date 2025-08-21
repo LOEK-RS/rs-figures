@@ -1,6 +1,8 @@
 ---
 title: "Figure: CV methods and their NNDs"
-author: "Jan Linnenbrink"
+author: 
+  - name: "Jan Linnenbrink"
+  - name: "Jakub Nowosad"
 date: last-modified
 date-format: "[Last Updated:] MMMM, YYYY"
 format:
@@ -54,7 +56,7 @@ theme_set(theme_bw(base_size = 15))
 ```{r}
 #| fig-height: 6
 
-k = 10
+k = 5
 rast_grid = terra::rast(xmin = 0, xmax = 200, ymin = 0, ymax = 200, ncols = 200, nrows = 200)
 
 study_area <- st_bbox(rast_grid)
@@ -165,3 +167,44 @@ ggsave("figures/geodist_sim.png", combined_plot_legend, width = 8, height = 6)
 
 **Comparison of random and clustered sampling designs and their effects on distance distributions and cross-validation.**
 **[Panel a) shows sampling locations for two different designs: random and clustered. Panel b) shows the respective density distributions of nearest-neighbor distances between samples (green), between prediction points and samples (orange) and between cross-validation (CV) folds. For randomly distributed samples, the CV-distances closely resemble the prediction distances. For clustered sampling, however, the CV-distances are much shorter, and thus won't yield reliable estimates of map accuracy.]**
+
+## Spatial cross-validation
+
+```{r}
+library(blockCV)
+set.seed(2024 - 01 - 14)
+
+spatcluster = cv_cluster(x = sample_r, k = k)
+sample_r2 = mutate(sample_r, type = "spatial", cv_folds = spatcluster$folds_id)
+sample_r_all = rbind(sample_r, sample_r2)
+sample_r_all2 = rename(sample_r_all, fold = cv_folds, split = type)
+
+scv_compare_map = ggplot() +
+	geom_sf(data = st_as_sfc(study_area), colour = "transparent", fill = "transparent") +
+	geom_sf(data = sample_r_all2, alpha = 0.2, shape = 16) +
+	geom_sf(data = sample_r_all, color = "#FF6F61", size = 1.5, alpha = 1) +
+	facet_grid(
+		type ~ cv_folds,
+		# switch = "y",
+		labeller = labeller(
+			cv_folds = function(x) paste0("Fold: ", x) # Add "Fold: " before each fold
+		)
+	) +
+	ylab("Cross-validation type") +
+	scale_y_continuous(sec.axis = dup_axis(labels = NULL)) +
+	theme_bw() +
+	theme(
+		panel.grid = element_blank(),
+		strip.text = element_text(size = 14),
+		axis.title.y = element_text(size = 16),
+		axis.title.y.left = element_blank(),
+		axis.ticks.y = element_blank()
+	)
+
+scv_compare_map
+ggsave("figures/scv_compare_map.pdf", scv_compare_map, width = 8, height = 4)
+ggsave("figures/scv_compare_map.png", scv_compare_map, width = 8, height = 4)
+```
+
+**Comparison between non-spatial (random) and spatial cross-validation (spatial clustering) methods.**
+

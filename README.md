@@ -10,6 +10,9 @@ They are made by the members of [the Remote Sensing and Spatial Modelling resear
 **Comparison of random and clustered sampling designs and their effects on distance distributions and cross-validation.**
 ![geodist_sim.png](figures/geodist_sim.png)
 
+**Comparison between non-spatial (random) and spatial cross-validation (spatial clustering) methods.**
+![scv_compare_map.png](figures/scv_compare_map.png)
+
 ## License
 
 All figures are available under the [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-green.svg)](https://creativecommons.org/licenses/by/4.0/).
