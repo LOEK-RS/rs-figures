@@ -1,9 +1,11 @@
+# Reproducible Figures
+
 This repository contains figures and the corresponding code to reproduce them. 
 They are made by the members of [the Remote Sensing and Spatial Modelling research group, Institute of Landscape Ecology, University of Münster](https://www.uni-muenster.de/RemoteSensing/en/).
 
 ## Gallery
 
-### CV figures ([src/cv_figures.qmd](src/cv_figures.qmd))
+### 1. CV figures ([src/cv_figures.qmd](src/cv_figures.qmd))
 
 **Comparison of random and clustered sampling designs and their effects on distance distributions and cross-validation.**
 ![geodist_sim.png](figures/geodist_sim.png)
