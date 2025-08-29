@@ -1,0 +1,294 @@
+---
+title: "Extrapolation vs Interpolation: A continuoum"
+author: 
+  - name: "Jan Linnenbrink"
+date: last-modified
+date-format: "[Last Updated:] MMMM, YYYY"
+format:
+  html:
+    code-fold: true
+    code-summary: "Show the code"
+    # page-layout: article
+    fig-column: page
+    fig-width: 10
+    fig-height: 4
+    embed-resources: true
+knitr:
+  opts_chunk:
+    warnings: false
+execute:
+  warning: false
+editor: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r}
+library(terra)
+library(sf)
+library(CAST)
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+library(patchwork)
+library(simsam)
+
+get_legend_35 <- function(plot) {
+	# return all legend candidates
+	legends <- get_plot_component(plot, "guide-box", return_all = TRUE)
+	# find non-zero legends
+	nonzero <- vapply(legends, \(x) !inherits(x, "zeroGrob"), TRUE)
+	idx <- which(nonzero)
+	# return first non-zero legend if exists, and otherwise first element (which will be a zeroGrob)
+	if (length(idx) > 0) {
+		return(legends[[idx[1]]])
+	} else {
+		return(legends[[1]])
+	}
+}
+
+theme_set(theme_bw(base_size = 15))
+```
+
+
+```{r}
+plot.knndm.integral <- function(Gij, Gj, ...) {
+	# Prepare data for plotting: Gij function
+	Gij_df <- data.frame(r = Gij[order(Gij)])
+	Gij_df$Function <- "1_Gij(r)"
+
+	# Prepare data for plotting: G function
+	Gj_df <- data.frame(r = Gj[order(Gj)])
+	Gj_df$Function <- "2_Gj(r)"
+
+	# Merge data for plotting
+	Gplot <- rbind(Gij_df, Gj_df)
+
+	n = length(Gij_df$r)
+	dfx = data.frame(sort(Gij_df$r), cumsum(rep(1 / n, n)), "x")
+	n1 = length(Gj_df$r)
+	dfy = data.frame(sort(Gj_df$r), cumsum(rep(1 / n1, n1)), "y")
+	colnames(dfx) = colnames(dfy) = c("point", "ecdf", "sample")
+	df = rbind(dfy, dfx)
+
+	combined = sort(c(Gij_df$r, Gj_df$r))
+
+	midpoints = combined[-(2 * n)] + diff(combined) / 2
+	fhat = ehat = dhat = width = numeric(2 * n - 1)
+	for (i in 1:(2 * n - 1)) {
+		point = midpoints[i]
+		width[i] = (point - combined[i]) * 2
+		fhat[i] = mean(Gj_df$r < point)
+		ehat[i] = mean(Gij_df$r < point)
+		dhat[i] = mean(combined < point)
+	}
+	gap = fhat - ehat
+
+	x1 = midpoints - 0.5 * width
+	x2 = midpoints + 0.5 * width
+	y1 = ehat
+	y2 = fhat
+	block = 1:(2 * n - 1)
+	alpha = 1 / (dhat * (1 - dhat))
+
+	df3.1 = cbind(x1, y1, block, alpha)
+	df3.2 = cbind(x1, y2, block, alpha)
+	df3.3 = cbind(x2, y2, block, alpha)
+	df3.4 = cbind(x2, y1, block, alpha)
+
+	df3 = rbind(df3.1, df3.2, df3.3, df3.4)
+	colnames(df3) = c("point", "ecdf", "block", "weights")
+	df3 = as_tibble(df3) |> arrange(block)
+
+	# Plot
+	ggplot2::ggplot(data = Gplot) +
+		ggplot2::geom_vline(xintercept = 0, lwd = 0.1, ggplot2::aes_string(x = "r", group = "Function", col = "Function")) +
+		ggplot2::geom_hline(yintercept = 0, lwd = 0.1, ggplot2::aes_string(x = "r", group = "Function", col = "Function")) +
+		ggplot2::geom_hline(yintercept = 1, lwd = 0.1, ggplot2::aes_string(x = "r", group = "Function", col = "Function")) +
+		geom_polygon(data = df3, aes(x = point, y = ecdf, group = block), alpha = 0.7, fill = "orange") +
+		ggplot2::stat_ecdf(geom = "step", lwd = 1, ggplot2::aes_string(x = "r", group = "Function", col = "Function")) +
+		ggplot2::scale_colour_manual(
+			name = "geographic distance:",
+			values = c("#000000", "#56B4E9"),
+			labels = c("prediction-to-sample", "sample-to-sample")
+		) +
+		ggplot2::ylab(expression(paste(hat(G)[ij](r), ", ", hat(G)[j]^"*" * "(r,L)", ", ", hat(G)[j](r)))) +
+		ggplot2::theme(panel.grid = element_blank())
+}
+```
+
+## Extrapolation vs Interpolation: A continuoum rather than a binary classification
+
+```{r}
+#| fig-height: 6
+
+set.seed(10)
+
+# Simulate samples
+rast_grid <- terra::rast(xmin = 0, xmax = 200, ymin = 0, ymax = 200, ncols = 200, nrows = 200)
+rast_grid_transfer <- terra::rast(xmin = 200, xmax = 400, ymin = 0, ymax = 200, ncols = 200, nrows = 200)
+
+study_area <- st_bbox(rast_grid)
+study_area_transfer <- st_bbox(rast_grid_transfer)
+
+ppoints_inter <- spatSample(rast_grid, 1000, "regular", as.points = TRUE) |>
+	st_as_sf() |>
+	mutate(type = "interpolation")
+ppoints_transfer <- spatSample(rast_grid_transfer, 1000, "regular", as.points = TRUE) |>
+	st_as_sf() |>
+	mutate(type = "extrapolation")
+
+ppoints <- list("inter" = ppoints_inter, "extra" = ppoints_transfer)
+
+length_out <- 5
+clustering_min <- 20
+clustering_max <- 100
+
+clustering <- as.integer(round(exp(seq(log(clustering_min), log(clustering_max), length.out = length_out))))[1:4]
+
+# clustering <- seq(10, 100, 10)[2:10]
+samples <- lapply(clustering, function(x) {
+	sam_field(rast_grid, size = 100, type = "clustered", value = x, nclusters = 4) |>
+		mutate(clustering = x)
+}) |>
+	do.call(what = "rbind")
+
+
+# calculate NNDs between samples and between prediction and samples
+geodistances <- lapply(clustering, function(cl) {
+	s <- samples |>
+		filter(clustering == cl)
+
+	# sample to sample NND
+	d <- sf::st_distance(s)
+	diag(d) <- Inf
+	min_d <- apply(d, 1, min)
+	sampletosample <- data.frame(dist = min_d, what = factor("sample-to-sample"), clustering = unique(s$clustering))
+
+	# prediction to sample NND
+	d0 <- sf::st_distance(ppoints$inter, s)
+	min_d0 <- apply(d0, 1, min)
+
+	sampletoprediction <- data.frame(
+		dist = min_d0,
+		what = factor("prediction-to-sample"),
+		clustering = unique(s$clustering)
+	)
+
+	geod_df <- rbind(sampletosample, sampletoprediction)
+	rownames(geod_df) <- NULL
+
+	# add transfer for the most clustered design
+	if (cl == clustering[[1]]) {
+		# sample to sample NND
+		d <- sf::st_distance(s)
+		diag(d) <- Inf
+		min_d <- apply(d, 1, min)
+		sampletosample <- data.frame(dist = min_d, what = factor("sample-to-sample"), clustering = 0)
+
+		# prediction to sample NND
+		d0 <- sf::st_distance(ppoints$extra, s)
+		min_d0 <- apply(d0, 1, min)
+
+		sampletoprediction <- data.frame(
+			dist = min_d0,
+			what = factor("prediction-to-sample"),
+			clustering = 0
+		)
+
+		geod_df_transfer <- rbind(sampletosample, sampletoprediction)
+
+		geod_df_final <- rbind(geod_df_transfer, geod_df)
+		rownames(geod_df_final) <- NULL
+	} else {
+		geod_df_final <- geod_df
+	}
+
+	geod_df_final
+}) |>
+	do.call(what = "rbind")
+
+# Calculate Wasserstein statistic as measure of extrapolation
+W_df <- lapply(c(0, clustering), function(cl) {
+	g <- geodistances |> filter(clustering == cl)
+	Gij <- g |> filter(what == "prediction-to-sample") |> pull(dist)
+	Gj <- g |> filter(what == "sample-to-sample") |> pull(dist)
+	W_stat <- twosamples::wass_stat(Gj, Gij)
+	data.frame(W = W_stat, clustering = cl)
+}) |>
+	do.call(what = "rbind")
+
+# Geodistance plots
+labs <- c("sample-to-sample", "prediction-to-sample")
+myColors <- RColorBrewer::brewer.pal(4, "Dark2")
+names(myColors) <- labs
+xlabs <- "geographic distances (m)"
+geodist_plot_list <- lapply(c(0, clustering), function(cl) {
+	Gj <- geodistances |> filter(clustering == cl & what == "sample-to-sample") |> pull(dist)
+	Gij <- geodistances |> filter(clustering == cl & what == "prediction-to-sample") |> pull(dist)
+
+	plot.knndm.integral(Gj = Gj, Gij = Gij) +
+		xlab("geographic distance") +
+		ylab("ECDF") +
+		theme(legend.position = "bottom", axis.text = element_text(size = 8)) +
+		geom_text(data = W_df |> filter(clustering == cl), aes(x = 200, y = 0.25, label = paste0("W = ", round(W)))) +
+		scale_x_continuous(limits = c(0, 300))
+})
+
+geodist_legend <- get_legend_35(geodist_plot_list[[1]])
+geodist_plot_list_clean <- lapply(geodist_plot_list, function(x) {
+	x + theme(legend.position = "None", axis.title = element_blank(), aspect.ratio = 1.2)
+})
+
+
+# Corresponding maps of samples
+samples_sf <- do.call("rbind", samples)
+study_area_sf <- st_as_sfc(study_area)
+study_area_transfer_sf <- st_as_sfc(study_area_transfer)
+
+samples_map_list <- lapply(clustering, function(cl) {
+	ggplot() +
+		geom_sf(data = study_area_sf, fill = "transparent", colour = "transparent") +
+		geom_sf(data = samples |> filter(clustering == cl), size = 0.5) +
+		facet_wrap(~clustering, nrow = 1) +
+		theme(
+			panel.grid = element_blank(),
+			axis.ticks = element_blank(),
+			axis.text = element_blank(),
+			strip.text = element_blank()
+		)
+})
+
+
+samples_map_transfer <- ggplot() +
+	geom_sf(data = samples |> filter(clustering == 20), size = 0.5) +
+	geom_sf(data = study_area_sf, fill = "transparent", colour = "transparent") +
+	geom_sf(data = study_area_transfer_sf, fill = "transparent", colour = "orange", linewidth = 1) +
+	facet_wrap(~"transfer", nrow = 1) +
+	theme(
+		panel.grid = element_blank(),
+		axis.ticks = element_blank(),
+		axis.text = element_blank(),
+		strip.text = element_blank()
+	)
+
+geodist_map_transfer <- wrap_plots(samples_map_transfer, geodist_plot_list_clean[[1]], ncol = 1)
+geodist_maps_other <- lapply(seq_along(samples_map_list), function(i) {
+	wrap_plots(samples_map_list[[i]], geodist_plot_list_clean[[i + 1]], ncol = 1)
+})
+
+geodist_maps_all <- plot_grid(
+	plotlist = c(list(geodist_map_transfer), geodist_maps_other),
+	nrow = 1,
+	rel_heights = c(1, 0.2)
+)
+
+geodist_map_final <- plot_grid(geodist_maps_all, geodist_legend, ncol = 1, rel_heights = c(1, 0.1))
+geodist_map_final
+ggsave("figures/extrapolation_continuum.pdf", geodist_map_final, height = 4, width = 10)
+
+```
+
+**Understanding Extrapolation as an continuum**
+**[The upper row shows sampling designs ranging from a setting where transfer to a new region is required (left) over clustered samples towards randomly distributed samples. The lower row shows the difference between the empirical cumulative density functions calculated for the distance between samples (blue, corresponds to interpolation situation) and the ECDF between prediction points and samples (black, the situation the model is applied to). A continuum from strong extrapolation situations on the left (denoted by large integrals between the two ECDFs, orange area and W stat measuring the integral) towards low extrapolation on the right can be observed.]**
+
