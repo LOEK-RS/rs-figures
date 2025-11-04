@@ -391,7 +391,7 @@ folds = lapply(unique(samples$design), generate_folds) |>
 		)
 	)
 
-folds = rbind(prob_sampling, folds)
+folds = bind_rows(prob_sampling, folds)
 
 folds = folds |>
 	mutate(
