@@ -13,6 +13,9 @@ They are made by the members of [the Remote Sensing and Spatial Modelling resear
 **Comparison between non-spatial (random) and spatial cross-validation (spatial clustering) methods.**
 ![scv_compare_map.png](figures/scv_compare_map.png)
 
+**Comparison of different strategies for map accuracy estimation: design-based sampling, random cross-validation, spatial cross-validation, and prediction-domain adaptive cross-validation, under a spectrum of sampling designs (from random to extrapolation).**
+![cv_strategies_compare.png](figures/validation_folds.png)
+
 ## License
 
 All figures are available under the [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-green.svg)](https://creativecommons.org/licenses/by/4.0/).

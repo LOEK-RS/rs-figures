@@ -408,7 +408,7 @@ folds = folds |>
 	st_as_sf()
 
 
-point_cols = Polychrome::alphabet.colors(26)
+point_cols = Polychrome::alphabet.colors(26)[c(23, 15, 1:14, 16:22, 24:26)]
 names(point_cols) = 1:26
 
 validation_folds = ggplot() +
