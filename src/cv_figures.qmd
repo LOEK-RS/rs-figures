@@ -30,6 +30,7 @@ library(sf)
 library(CAST)
 library(ggplot2)
 library(dplyr)
+library(tidyr)
 library(cowplot)
 library(patchwork)
 library(simsam)
@@ -207,4 +208,232 @@ ggsave("figures/scv_compare_map.png", scv_compare_map, width = 8, height = 4)
 ```
 
 **Comparison between non-spatial (random) and spatial cross-validation (spatial clustering) methods.**
+
+## Strategies for map accuracy estimation
+
+```{r}
+get_random_sample = function(sample_size, r_df) {
+	sample_df_random = r_df[sample(nrow(r_df), sample_size), ]
+	sample_df_random$sample_size = sample_size
+	return(sample_df_random)
+}
+
+get_clustered_sample = function(sample_size, r, r_df, type = "clustered") {
+	if (type == "clustered") {
+		n_clusters = 100
+		m = 25
+	} else {
+		n_clusters = 120
+		m = 10
+	}
+
+	create_clustered_sample = function(r_df) {
+		two_stage = function(sframe, psu, n, m) {
+			# function for the two-stage clustered sampling
+			units = sample.int(nrow(sframe), size = n, replace = TRUE)
+			mypsusample = sframe[units, psu]
+
+			ssunits = unlist(lapply(mypsusample, function(psunit) {
+				sample(which(sframe[, psu] == psunit), size = m, replace = FALSE)
+			}))
+
+			psudraw = rep(c(1:n), each = m)
+			mysample = data.frame(sframe[ssunits, ], psudraw)
+			return(mysample)
+		}
+		r_grid = r_df[c("x", "y")]
+		tkmean = kmeans(r_grid, centers = n_clusters, nstart = 5)
+		r_grid$psu = tkmean$cluster
+		n_psu = ceiling(sample_size / m)
+		mysample = two_stage(sframe = r_grid, psu = "psu", n = n_psu, m = m)
+		mysample = sf::st_as_sf(mysample, coords = c("x", "y"))
+		return(mysample)
+	}
+	sample_clustered = create_clustered_sample(r_df)
+	sample_df_clustered = na.omit(terra::extract(r, sample_clustered, xy = TRUE, ID = FALSE))
+	sample_df_clustered$sample_size = sample_size
+	return(sample_df_clustered)
+}
+
+generate_prob_sampling = function(design) {
+	samples_subset = samples |>
+		filter(design == {{ design }})
+
+	# Select appropriate raster
+	if (design != "extrapolation") {
+		sampling_raster = r
+	} else {
+		sampling_raster = r_east
+	}
+
+	# Standard validation sample
+	val_SRS = terra::spatSample(
+		sampling_raster,
+		size = floor(nrow(samples_subset) * (1 - 0.7)),
+		method = "random",
+		na.rm = TRUE,
+		as.points = TRUE
+	) |>
+		st_as_sf() |>
+		mutate(name = "design-based") |>
+		select(name)
+
+	# Training sample
+	samples_prob = samples_subset |>
+		slice_sample(n = floor(nrow(samples_subset) * 0.7)) |>
+		mutate(name = "training_prob") |>
+		select(name)
+
+	# Combine results
+	combined = bind_rows(val_SRS, samples_prob) |>
+		mutate(
+			design = design
+		)
+	return(combined)
+}
+generate_folds = function(design) {
+	samples_subset = samples |>
+		filter(design == {{ design }})
+
+	# random CV
+	random_folds = sample(1:10, replace = TRUE, size = nrow(samples_subset))
+
+	# spatial CV
+	mdist = dist(st_coordinates(samples_subset))
+	hc = hclust(mdist, method = "complete")
+	# val.dist = 350
+	# d = val.dist * 1000
+	d = 55
+	spatial_folds = cutree(hc, h = d)
+
+	# kNNDM CV
+	if (design != "extrapolation") {
+		sarea = study_area
+	} else if (design == "extrapolation") {
+		sarea = study_area_east
+	}
+	knndm_folds = CAST::knndm(samples_subset, modeldomain = sarea)$clusters
+
+	# Combine results
+	data.frame(
+		design = design,
+		randomCV = random_folds,
+		spatialCV = spatial_folds,
+		knndmCV = knndm_folds
+	) |>
+		cbind(samples_subset[, "geometry"])
+}
+
+r = terra::rast(xmin = 0, xmax = 200, ymin = 0, ymax = 200, ncols = 200, nrows = 200, vals = 1)
+r_df = as.data.frame(r, xy = TRUE, na.rm = TRUE)
+
+r_west = terra::crop(r, terra::ext(0, 100, 0, 200))
+r_west_df = as.data.frame(r_west, xy = TRUE, na.rm = TRUE)
+
+r_east = terra::crop(r, terra::ext(100, 200, 0, 200))
+
+study_area = st_as_sfc(st_bbox(r))
+study_area_east = st_as_sfc(st_bbox(r_east))
+
+study_areas_all = rbind(
+	study_area |> st_as_sf() |> mutate(design = "random"),
+	study_area |> st_as_sf() |> mutate(design = "biased"),
+	study_area |> st_as_sf() |> mutate(design = "clustered"),
+	study_area_east |> st_as_sf() |> mutate(design = "extrapolation")
+) |>
+	mutate(design = factor(design, levels = c("random", "biased", "clustered", "extrapolation")))
+
+
+sample_size = 300
+
+# regular_sample -----------------------------------------------------------
+set.seed(1)
+sample_df_random = get_random_sample(sample_size, r_df) |>
+	mutate(design = "random")
+sample_r = st_as_sf(sample_df_random, coords = c("x", "y"))
+# random_sample -----------------------------------------------------------
+sample_df_biased = get_clustered_sample(sample_size, r, r_df, type = "biased") |>
+	mutate(design = "biased")
+sample_b = st_as_sf(sample_df_biased, coords = c("x", "y"))
+# clustered_sample --------------------------------------------------------
+sample_df_clustered = get_clustered_sample(sample_size, r, r_df, type = "clustered") |>
+	mutate(design = "clustered")
+sample_c = st_as_sf(sample_df_clustered, coords = c("x", "y"))
+# extrapolation sample --------------------------------------------------
+sample_df_extra = get_clustered_sample(sample_size, r_west, r_west_df, type = "clustered") |>
+	mutate(design = "extrapolation")
+sample_e = st_as_sf(sample_df_extra, coords = c("x", "y"))
+
+samples <- list("random" = sample_r, "biased" = sample_b, "clustered" = sample_c, "extrapolation" = sample_e) |>
+	do.call(what = "rbind") |>
+	mutate(design = factor(design, levels = c("random", "biased", "clustered", "extrapolation")))
+
+
+set.seed(10)
+
+prob_sampling = lapply(unique(samples$design), generate_prob_sampling) |>
+	do.call(what = "rbind") |>
+	select(design, cv_name = name, geometry) |>
+	mutate(
+		value = ifelse(cv_name == "design-based", 1, 2),
+		cv_name = ifelse(value == 2, "design-based", cv_name)
+	)
+
+folds = lapply(unique(samples$design), generate_folds) |>
+	do.call(what = "rbind") |>
+	pivot_longer(c(randomCV, spatialCV, knndmCV)) |>
+	select(design, cv_name = name, value, geometry) |>
+	mutate(
+		cv_name = case_when(
+			cv_name == "randomCV" ~ "random CV",
+			cv_name == "spatialCV" ~ "spatial CV",
+			cv_name == "knndmCV" ~ "prediction-domain adaptive CV"
+		)
+	)
+
+folds = bind_rows(prob_sampling, folds)
+
+folds = folds |>
+	mutate(
+		cv_name = factor(
+			cv_name,
+			levels = c(
+				"design-based",
+				"random CV",
+				"spatial CV",
+				"prediction-domain adaptive CV"
+			)
+		)
+	) |>
+	st_as_sf()
+
+
+point_cols = Polychrome::alphabet.colors(26)[c(23, 15, 1:14, 16:22, 24:26)]
+names(point_cols) = 1:26
+
+validation_folds = ggplot() +
+	geom_sf(data = study_areas_all, fill = "#FFD700", aes(colour = "prediction area"), linewidth = 1, alpha = 0.05) +
+	scale_colour_manual("prediction area", values = "#FFD700", name = NULL) +
+	ggnewscale::new_scale_colour() +
+	geom_sf(data = folds, aes(color = as.factor(value)), size = 0.6) +
+	scale_colour_manual(values = point_cols, guide = NULL) +
+	facet_grid(
+		cv_name ~ design,
+		labeller = ggplot2::labeller(
+			.rows = ggplot2::label_wrap_gen(width = 20)
+		)
+	) +
+	theme_bw(base_size = 12) +
+	theme(
+		panel.grid = element_blank(),
+		axis.text.x = element_text(angle = 45, hjust = 1),
+		legend.position = "bottom"
+	)
+
+validation_folds
+ggsave("figures/validation_folds.pdf", validation_folds, width = 8, height = 8)
+ggsave("figures/validation_folds.png", validation_folds, width = 8, height = 8)
+```
+
+*Comparison of different strategies for map accuracy estimation: design-based sampling, random cross-validation, spatial cross-validation, and prediction-domain adaptive cross-validation, under a spectrum of sampling designs (from random to extrapolation).*
 
